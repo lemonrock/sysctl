@@ -37,17 +37,17 @@ use std::mem::uninitialized;
 #[cfg(not(any(target_os = "linux", target_os = "android", target_os = "windows", target_os = "solaris")))]
 pub fn maximum_number_of_processes() -> Result<c_int>
 {
-	sysctl_wrapper(self::libc::CTL_KERN, self::libc::KERN_MAXPROC)
+	sysctl(self::libc::CTL_KERN, self::libc::KERN_MAXPROC)
 }
 
 #[cfg(not(any(target_os = "linux", target_os = "android", target_os = "windows", target_os = "solaris")))]
 pub fn boot_time() -> Result<timeval>
 {
-	sysctl_wrapper(self::libc::CTL_KERN, self::libc::KERN_BOOTTIME)
+	sysctl(self::libc::CTL_KERN, self::libc::KERN_BOOTTIME)
 }
 
 #[cfg(not(any(target_os = "linux", target_os = "android", target_os = "windows", target_os = "solaris")))]
-fn sysctl_wrapper<T>(ctl: c_int, ctl_category: c_int) -> Result<T>
+pub fn sysctl<T>(ctl: c_int, ctl_category: c_int) -> Result<T>
 {
 	let mut value: T = unsafe { uninitialized() };
 	let mut mib: [i32; 2] = [ctl, ctl_category];
