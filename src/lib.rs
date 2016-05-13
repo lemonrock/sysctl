@@ -11,6 +11,7 @@ use std::io::Error;
 use std::io::Result;
 use std::ptr;
 use std::mem::size_of;
+use std::mem::uninitialized;
 
 // #[cfg(not(any(target_os = "linux", target_os = "android", target_os = "windows", target_os = "solaris")))]
 // pub fn uptime() -> Result<timeval>
@@ -42,19 +43,13 @@ pub fn maximum_number_of_processes() -> Result<c_int>
 #[cfg(not(any(target_os = "linux", target_os = "android", target_os = "windows", target_os = "solaris")))]
 pub fn boot_time() -> Result<timeval>
 {
-	sysctl_wrapper_default(self::libc::CTL_KERN, self::libc::KERN_BOOTTIME, timeval {tv_sec: 0, tv_usec: 0})
+	sysctl_wrapper(self::libc::CTL_KERN, self::libc::KERN_BOOTTIME)
 }
 
 #[cfg(not(any(target_os = "linux", target_os = "android", target_os = "windows", target_os = "solaris")))]
-fn sysctl_wrapper<T: Default>(ctl: c_int, ctl_category: c_int) -> Result<T>
+fn sysctl_wrapper<T>(ctl: c_int, ctl_category: c_int) -> Result<T>
 {
-	let value: T = Default::default();
-	sysctl_wrapper_default(ctl, ctl_category, value)
-}
-
-#[cfg(not(any(target_os = "linux", target_os = "android", target_os = "windows", target_os = "solaris")))]
-fn sysctl_wrapper_default<T>(ctl: c_int, ctl_category: c_int, mut value: T) -> Result<T>
-{
+	let mut value: T = unsafe { uninitialized() };
 	let mut mib: [i32; 2] = [ctl, ctl_category];
 	let mut size = size_of::<T>();
 	let pointer: *mut c_void = &mut value as *mut _ as *mut c_void;
@@ -68,4 +63,11 @@ fn sysctl_wrapper_default<T>(ctl: c_int, ctl_category: c_int, mut value: T) -> R
 			unexpected @ _ => panic!("Did not expect result code {}", unexpected),
 		}
 	}
+}
+
+#[cfg(not(any(target_os = "linux", target_os = "android", target_os = "windows", target_os = "solaris")))]
+#[test]
+fn test_maximum_number_of_processes()
+{
+	maximum_number_of_processes().unwrap();
 }
