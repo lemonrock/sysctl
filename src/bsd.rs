@@ -6,10 +6,13 @@ extern crate libc;
 use self::libc::c_int;
 use self::libc::c_void;
 use self::libc::c_uint;
+use self::libc::c_char;
+use self::libc::int32_t;
+use self::libc::size_t;
 use self::libc::timeval;
 use std::io::Error;
 use std::io::Result;
-use std::ptr;
+use std::ptr::null_mut;
 use std::mem::size_of;
 use std::mem::uninitialized;
 
@@ -39,37 +42,112 @@ enum Sysctl
 
 impl Sysctl
 {	
-	pub fn sysctl<T>(self, ctl_category: c_int) -> Result<T>
+	pub fn get<T>(self, ctl_category: c_int) -> Result<T>
 	{
 		let mut value: T = unsafe { uninitialized() };
 		let mut mib: [i32; 2] = [self as i32, ctl_category];
 		let mut size = size_of::<T>();
 		let pointer: *mut c_void = &mut value as *mut _ as *mut c_void;
 
-		unsafe
+		match unsafe { self::libc::sysctl(mib.as_mut_ptr() as *mut c_int, mib.len() as c_uint, pointer, &mut size as *mut usize, null_mut(), 0) }
 		{
-			match self::libc::sysctl(mib.as_mut_ptr() as *mut c_int, mib.len() as c_uint, pointer, &mut size as *mut usize, ptr::null_mut(), 0)
-			{
-				0 => Ok(value),
-				-1 => Err(Error::last_os_error()),
-				unexpected @ _ => panic!("Did not expect result code {}", unexpected),
-			}
+			0 => Ok(value),
+			-1 => Err(Error::last_os_error()),
+			unexpected @ _ => panic!("Did not expect result code {}", unexpected),
 		}
 	}
 }
 
-pub fn maximum_number_of_processes() -> Result<c_int>
+pub fn kern_maxproc() -> Result<c_int>
 {
-	Sysctl::CTL_KERN.sysctl(self::libc::KERN_MAXPROC)
+	Sysctl::CTL_KERN.get(self::libc::KERN_MAXPROC)
 }
 
-pub fn boot_time() -> Result<timeval>
+pub fn kern_boottime() -> Result<timeval>
 {
-	Sysctl::CTL_KERN.sysctl(self::libc::KERN_BOOTTIME)
+	Sysctl::CTL_KERN.get(self::libc::KERN_BOOTTIME)
 }
 
+#[cfg(target_os = "macos")] static MachdepCpuCore_count: &'static [u8] = b"machdep.cpu.core_count\0";
+#[cfg(target_os = "macos")]
+pub fn machdep_cpu_core_count() -> Result<int32_t>
+{
+	sysctl_by_name(&MachdepCpuCore_count)
+}
+
+// The number of physical processors available in the current power management mode.
+#[cfg(target_os = "macos")] static HwPhysicalcpu: &'static [u8] = b"hw.physicalcpu\0";
+#[cfg(target_os = "macos")]
+pub fn hw_physicalcpu() -> Result<int32_t>
+{
+	sysctl_by_name(&HwPhysicalcpu)
+}
+
+// The maximum number of physical processors that could be available this boot.
+#[cfg(target_os = "macos")] static HwPhysicalcpu_max: &'static [u8] = b"hw.physicalcpu_max\0";
+#[cfg(target_os = "macos")]
+pub fn hw_physicalcpu_max() -> Result<int32_t>
+{
+	sysctl_by_name(&HwPhysicalcpu_max)
+}
+
+// The number of logical processors available in the current power management mode.
+#[cfg(target_os = "macos")] static HwPhysicalcpu: &'static [u8] = b"hw.logicalcpu\0";
+#[cfg(target_os = "macos")]
+pub fn hw_logicalcpu() -> Result<int32_t>
+{
+	sysctl_by_name(&HwPhysicalcpu)
+}
+
+// The maximum number of logical processors that could be available this boot.
+#[cfg(target_os = "macos")] static HwPhysicalcpu_max: &'static [u8] = b"hw.logicalcpu_max\0";
+#[cfg(target_os = "macos")]
+pub fn hw_logicalcpu_max() -> Result<int32_t>
+{
+	sysctl_by_name(&HwPhysicalcpu_max)
+}
+
+// The number of processor packages present on a machine (ie groups of cores)
+#[cfg(target_os = "macos")] static HwPackages: &'static [u8] = b"hw.packages\0";
+#[cfg(target_os = "macos")]
+pub fn hw_packages() -> Result<int32_t>
+{
+	sysctl_by_name(&HwPackages)
+}
+
+#[cfg(any(target_os = "macos", target_os = "freebsd", target_os = "dragonfly", target_os = "netbsd", target_os = "bitrig"))] static NwNcpu: &'static [u8] = b"hw.ncpu\0";
+#[cfg(any(target_os = "macos", target_os = "freebsd", target_os = "dragonfly", target_os = "netbsd", target_os = "bitrig"))]
+/// Please note that this function is deprecated on Mac OS X
+/// See also sysconf_number_of_processors_online and sysconf_number_of_processors_configured (latter is Mac OS X only)
+pub fn hw_ncpu() -> Result<int32_t>
+{
+	sysctl_by_name(&NwNcpu)
+}
+
+
+// More names at https://www.freebsd.org/cgi/man.cgi?query=sysctl&apropos=0&sektion=8&manpath=FreeBSD+11-current&arch=default&format=html  and (apple) man sysctlbyname
+
+/// Must end in '\0'
+/// Not supported on OpenBSD, Solaris or Linux
+#[cfg(any(target_os = "macos", target_os = "freebsd", target_os = "dragonfly", target_os = "netbsd", target_os = "bitrig"))]
+pub fn sysctl_by_name<T>(name: &'static [u8]) -> Result<T>
+{
+	let mut value: T = unsafe { uninitialized() };
+	let mut size: size_t = size_of::<T>();
+	let pointer: *mut c_void = &mut value as *mut _ as *mut c_void;
+	
+	match unsafe { self::libc::sysctlbyname(name.as_ptr() as *const c_char, pointer, &mut size as *mut usize, null_mut(), 0) }
+	{
+		0 => Ok(value),
+		-1 => Err(Error::last_os_error()),
+		unexpected @ _ => panic!("Did not expect result code {}", unexpected),
+	}
+}
+					
 #[test]
-fn test_maximum_number_of_processes()
+#[cfg(target_os = "macos")]
+fn test_kern_maxproc()
 {
-	maximum_number_of_processes().unwrap();
+	kern_maxproc().unwrap();
+	machdep_cpu_core_count().unwrap();
 }

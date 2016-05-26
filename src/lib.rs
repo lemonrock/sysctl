@@ -3,25 +3,9 @@
 
 
 #[macro_use] extern crate cfg_if;
-
-// #[cfg(not(any(target_os = "linux", target_os = "android", target_os = "windows", target_os = "solaris")))]
-// pub fn uptime() -> Result<timeval>
-// {
-// 	let boot_time = try!(boot_time());
-//
-// 	let mut now: timeval;
-// 	unsafe
-// 	{
-// 		match self::libc::gettimeofday(now as *mut timeval, ptr::null_mut())
-// 		{
-// 			0 =>
-// 			{
-// 				Ok(timersub(now, boot_time))
-// 			},
-// 			-1 => Err(Error:last_os_error()),
-// 		}
-// 	}
-// }
+#[cfg(unix)] extern crate libc;
+#[cfg(unix)] use libc::sysconf;
+#[cfg(unix)] use libc::c_long;
 
 cfg_if!
 {
@@ -34,4 +18,16 @@ cfg_if!
 	{
 		// Unsupported
 	}
+}
+
+#[cfg(unix)]
+pub fn sysconf_number_of_processors_online() -> c_long
+{
+	sysconf(libc::_SC_NPROCESSORS_ONLN)
+}
+
+#[cfg(target_os = "macos")]
+pub fn sysconf_number_of_processors_configured() -> c_long
+{
+	sysconf(libc::_SC_NPROCESSORS_CONF)
 }
